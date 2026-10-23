@@ -423,9 +423,21 @@ class AplicacionGUI:
         texto_ia = self.texto_ia.get("1.0", "end").strip()
         if texto_ia.startswith("Consultando") or texto_ia.startswith("[Error]"):
             texto_ia = None
+        # Capturar la ventana de la aplicacion (pantalla de ejecucion).
+        capturas = []
+        try:
+            from PIL import ImageGrab
+            x = self.raiz.winfo_x()
+            y = self.raiz.winfo_y()
+            w = self.raiz.winfo_width()
+            h = self.raiz.winfo_height()
+            captura = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+            capturas.append(captura)
+        except Exception:
+            pass
         try:
             generador = GeneradorPDF(ruta)
-            generador.generar(self.matriz_actual, self.resultado_actual, self.figura_actual, texto_ia)
+            generador.generar(self.matriz_actual, self.resultado_actual, self.figura_actual, texto_ia, capturas)
         except Exception as error:
             messagebox.showerror("Error al generar PDF", str(error))
             self._set_estado(f"Error PDF: {error}", COLOR_ERROR)

@@ -24,6 +24,7 @@ class GeneradorPDF:
         resultado: ResultadoAsignacion,
         figura_grafo=None,
         texto_ia: Optional[str] = None,
+        capturas=None,
     ) -> str:
         with PdfPages(self.ruta_salida) as pdf:
             # Pagina 1: resumen + matriz + asignacion.
@@ -85,5 +86,20 @@ class GeneradorPDF:
                     y -= 0.02
                 pdf.savefig(fig)
                 plt.close(fig)
+
+            # Paginas de capturas de pantalla (si se proporcionan).
+            if capturas:
+                for indice, captura in enumerate(capturas, start=1):
+                    fig, ax = plt.subplots(figsize=(8.5, 11))
+                    ax.axis("off")
+                    ax.text(0.5, 0.96, f"Captura de pantalla {indice}", ha="center",
+                            fontsize=14, weight="bold")
+                    # Convertir imagen PIL a array para matplotlib.
+                    import numpy as np
+                    imagen = np.array(captura)
+                    ax.imshow(imagen, aspect="auto")
+                    ax.axis("off")
+                    pdf.savefig(fig)
+                    plt.close(fig)
 
         return self.ruta_salida
