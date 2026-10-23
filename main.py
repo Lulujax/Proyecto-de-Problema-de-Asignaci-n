@@ -1,5 +1,4 @@
 """Punto de entrada de la aplicacion."""
-
 import os
 import sys
 

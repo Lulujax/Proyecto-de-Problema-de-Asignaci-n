@@ -144,9 +144,10 @@ class ClienteIA:
             )
         lineas.append("")
         lineas.append(
-            "Responde en espanol con maximo 2 parrafos de analisis ejecutivo y una "
-            "recomendacion de negocio concreta sobre que hacer con los recursos "
-            "inactivos o tareas huerfanas si los hubo."
+            "Responde SIEMPRE en espanol, con maximo 2 parrafos de analisis ejecutivo "
+            "y una recomendacion de negocio concreta sobre que hacer con los recursos "
+            "inactivos o tareas huerfanas si los hubo. No incluyas tu proceso de "
+            "pensamiento ni texto en otro idioma."
         )
         return "\n".join(lineas)
 
@@ -155,3 +156,53 @@ class ClienteIA:
     ) -> Tuple[bool, str]:
         prompt = self.construir_prompt(matriz_original, objetivo, resultado)
         return self.proveedor.consultar(prompt)
+
+class ProveedorNvidia(ProveedorIA):
+    # Proveedor concreto para la API de NVIDIA NIM (compatible con OpenAI).
+
+    def __init__(self, api_key=None, modelo="nvidia/nemotron-3-ultra-550b-a55b", timeout=60):
+        self.api_key = api_key if api_key is not None else os.getenv("NVIDIA_API_KEY")
+        self.modelo = modelo
+        self.timeout = timeout
+
+    def consultar(self, prompt):
+        if not self.api_key or not self.api_key.strip():
+            return False, "No se encontro la clave API de NVIDIA. Defina NVIDIA_API_KEY o ingresela en la aplicacion."
+        url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        cabeceras = {"Authorization": "Bearer " + self.api_key.strip(), "Content-Type": "application/json"}
+        cuerpo = {
+            "model": self.modelo,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 512,
+            "temperature": 0.4,
+            "chat_template_kwargs": {"thinking": False},
+        }
+        try:
+            respuesta = requests.post(url, headers=cabeceras, json=cuerpo, timeout=self.timeout)
+            if not respuesta.ok and respuesta.status_code in (400, 422):
+                cuerpo.pop("chat_template_kwargs", None)
+                respuesta = requests.post(url, headers=cabeceras, json=cuerpo, timeout=self.timeout)
+        except requests.exceptions.Timeout:
+            return False, "Tiempo de espera agotado al consultar NVIDIA (timeout)."
+        except requests.exceptions.ConnectionError:
+            return False, "Sin conexion a internet o no se pudo alcanzar NVIDIA."
+        except requests.exceptions.RequestException as error:
+            return False, "Error de red al consultar NVIDIA: " + str(error)
+        if respuesta.status_code in (401, 403):
+            return False, "Clave API de NVIDIA invalida o sin permisos."
+        if respuesta.status_code == 429:
+            return False, "Se excedio la cuota de la API de NVIDIA. Intente mas tarde."
+        if not respuesta.ok:
+            detalle = respuesta.text[:300] if respuesta.text else ""
+            return False, "Error HTTP " + str(respuesta.status_code) + " de NVIDIA: " + detalle
+        try:
+            datos = respuesta.json()
+            mensaje = datos["choices"][0]["message"]
+            texto = mensaje.get("content") or mensaje.get("reasoning_content") or ""
+        except (KeyError, IndexError, TypeError, ValueError) as error:
+            return False, "Respuesta inesperada de NVIDIA: " + str(error)
+        texto = texto.strip()
+        if not texto:
+            return False, "NVIDIA devolvio una respuesta vacia."
+        return True, texto
+

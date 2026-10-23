@@ -20,7 +20,7 @@ from .matriz import Matriz
 from .hungaro import Hungaro, ResultadoAsignacion
 from .ingesta import IngestaDatos, IngestaError
 from .grafo import GrafoBipartito
-from .cliente_ia import ClienteIA, ProveedorGemini
+from .cliente_ia import ClienteIA, ProveedorGemini, ProveedorNvidia
 
 
 # Paleta y estilos compartidos.
@@ -43,8 +43,10 @@ class AplicacionGUI:
         self.resultado_actual: Optional[ResultadoAsignacion] = None
         self.objetivo_var = tk.StringVar(value="min")
         self.clave_api_var = tk.StringVar(value=os.getenv("GEMINI_API_KEY", ""))
+        self.proveedor_var = tk.StringVar(value="Gemini")
         self.modelo_var = tk.StringVar(value="gemini-3.8-flash")
         self.pensamiento_var = tk.StringVar(value="LOW")
+        self.clave_nvidia_var = tk.StringVar(value=os.getenv("NVIDIA_API_KEY", ""))
         self.archivo_actual_var = tk.StringVar(value="Ningun archivo cargado.")
         self.estado_var = tk.StringVar(value="Listo. Cargue una matriz para comenzar.")
 
@@ -199,20 +201,35 @@ class AplicacionGUI:
     # Pestana: IA
     # ------------------------------------------------------------------ #
     def _construir_pestana_ia(self) -> None:
+        marco_proveedor = ttk.Frame(self.pestana_ia)
+        marco_proveedor.pack(fill="x", pady=4)
+        ttk.Label(marco_proveedor, text="Proveedor de IA:").pack(side="left")
+        combo_proveedor = ttk.Combobox(
+            marco_proveedor, textvariable=self.proveedor_var, width=12, state="readonly",
+            values=["Gemini", "Nvidia"],
+        )
+        combo_proveedor.pack(side="left", padx=6)
+        combo_proveedor.bind("<<ComboboxSelected>>", lambda e: self._actualizar_modelos_por_proveedor())
+
         marco_clave = ttk.Frame(self.pestana_ia)
         marco_clave.pack(fill="x", pady=4)
-        ttk.Label(marco_clave, text="Clave API (opcional, sobreescribe la variable de entorno):").pack(anchor="w")
-        fila = ttk.Frame(marco_clave)
-        fila.pack(fill="x", pady=2)
-        self.entrada_clave = ttk.Entry(fila, textvariable=self.clave_api_var, show="*", width=52)
+        ttk.Label(marco_clave, text="Clave Gemini (opcional):").pack(anchor="w")
+        fila_g = ttk.Frame(marco_clave)
+        fila_g.pack(fill="x", pady=2)
+        self.entrada_clave = ttk.Entry(fila_g, textvariable=self.clave_api_var, show="*", width=52)
         self.entrada_clave.pack(side="left")
-        self.boton_mostrar_clave = ttk.Button(fila, text="Mostrar", width=9, command=self._alternar_visibilidad_clave)
-        self.boton_mostrar_clave.pack(side="left", padx=6)
+        ttk.Button(fila_g, text="Mostrar", width=9, command=self._alternar_visibilidad_clave).pack(side="left", padx=6)
+
+        ttk.Label(marco_clave, text="Clave NVIDIA (opcional):").pack(anchor="w", pady=(6, 0))
+        fila_n = ttk.Frame(marco_clave)
+        fila_n.pack(fill="x", pady=2)
+        self.entrada_clave_nvidia = ttk.Entry(fila_n, textvariable=self.clave_nvidia_var, show="*", width=52)
+        self.entrada_clave_nvidia.pack(side="left")
 
         marco_modelo = ttk.Frame(self.pestana_ia)
         marco_modelo.pack(fill="x", pady=4)
         ttk.Label(marco_modelo, text="Modelo:").pack(side="left")
-        combo_modelo = ttk.Combobox(
+        self.combo_modelo = ttk.Combobox(
             marco_modelo, textvariable=self.modelo_var, width=26, state="readonly",
             values=[
                 "gemini-3.8-flash",
@@ -222,7 +239,7 @@ class AplicacionGUI:
                 "gemini-2.5-flash",
             ],
         )
-        combo_modelo.pack(side="left", padx=6)
+        self.combo_modelo.pack(side="left", padx=6)
         ttk.Label(marco_modelo, text="Nivel de pensamiento:").pack(side="left", padx=(12, 0))
         combo_pensamiento = ttk.Combobox(
             marco_modelo, textvariable=self.pensamiento_var, width=10, state="readonly",
@@ -408,21 +425,48 @@ class AplicacionGUI:
     # IA
     # ------------------------------------------------------------------ #
     def _alternar_visibilidad_clave(self) -> None:
+        # Alterna visibilidad para ambos campos de clave (Gemini y NVIDIA)
         actual = self.entrada_clave.cget("show")
         self.entrada_clave.config(show="" if actual == "*" else "*")
-        self.boton_mostrar_clave.config(text="Ocultar" if actual == "*" else "Mostrar")
+        actual_nv = self.entrada_clave_nvidia.cget("show")
+        self.entrada_clave_nvidia.config(show="" if actual_nv == "*" else "*")
+
+    def _actualizar_modelos_por_proveedor(self) -> None:
+        proveedor = self.proveedor_var.get()
+        if proveedor == "Nvidia":
+            modelos = ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3.5-lightning-30b-a3b"]
+            self.modelo_var.set(modelos[0])
+        else:
+            modelos = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
+            if self.modelo_var.get() not in modelos:
+                self.modelo_var.set(modelos[0])
+        self.combo_modelo["values"] = modelos
 
     def _consultar_ia(self) -> None:
         if self.resultado_actual is None or self.matriz_actual is None:
             messagebox.showwarning("Sin resultado", "Resuelva el problema antes de consultar la IA.")
             self._set_estado("Debe resolver primero.", COLOR_ALERTA)
             return
-        clave = self.clave_api_var.get().strip()
-        proveedor = ProveedorGemini(
-            api_key=clave if clave else None,
-            modelo=self.modelo_var.get().strip() or "gemini-3.8-flash",
-            nivel_pensamiento=self.pensamiento_var.get().strip() or "LOW",
-        )
+        proveedor_nombre = self.proveedor_var.get()
+        modelo = self.modelo_var.get().strip()
+        if proveedor_nombre == "Nvidia":
+            clave = self.clave_nvidia_var.get().strip()
+            if clave and ("\n" in clave or "\r" in clave or len(clave) > 200 or not clave.startswith("nvapi-")):
+                messagebox.showerror("Clave invalida", "La clave de NVIDIA parece incorrecta. Debe comenzar con 'nvapi-' y no contener saltos de linea. Limpie el campo y vuelva a pegarla.")
+                self._set_estado("Clave NVIDIA invalida.", COLOR_ERROR)
+                return
+            proveedor = ProveedorNvidia(api_key=clave if clave else None, modelo=modelo or "nvidia/nemotron-3-ultra-550b-a55b")
+        else:
+            clave = self.clave_api_var.get().strip()
+            if clave and ("\n" in clave or "\r" in clave or len(clave) > 200):
+                messagebox.showerror("Clave invalida", "La clave de Gemini parece incorrecta. No debe contener saltos de linea.")
+                self._set_estado("Clave Gemini invalida.", COLOR_ERROR)
+                return
+            proveedor = ProveedorGemini(
+                api_key=clave if clave else None,
+                modelo=modelo or "gemini-3.8-flash",
+                nivel_pensamiento=self.pensamiento_var.get().strip() or "LOW",
+            )
         cliente = ClienteIA(proveedor=proveedor)
         objetivo = self.objetivo_var.get()
 
