@@ -21,6 +21,7 @@ from .hungaro import Hungaro, ResultadoAsignacion
 from .ingesta import IngestaDatos, IngestaError
 from .grafo import GrafoBipartito
 from .cliente_ia import ClienteIA, ProveedorGemini, ProveedorNvidia
+from .pdf import GeneradorPDF
 
 
 # Paleta y estilos compartidos.
@@ -188,6 +189,7 @@ class AplicacionGUI:
                    style="Primario.TButton").pack(side="left")
         self.etiqueta_grafo = ttk.Label(marco, text="Sin grafo generado.", foreground="#57606a")
         self.etiqueta_grafo.pack(side="left", padx=12)
+        ttk.Button(marco, text="Exportar reporte a PDF", command=self._exportar_pdf).pack(side="right", padx=4)
 
         self.marco_canvas = ttk.LabelFrame(self.pestana_grafo, text="Grafo bipartito de asignacion", padding=6)
         self.marco_canvas.pack(fill="both", expand=True, pady=6)
@@ -411,6 +413,25 @@ class AplicacionGUI:
         self.toolbar_grafo = NavigationToolbar2Tk(self.canvas_grafo, self.marco_canvas, pack_toolbar=False)
         self.toolbar_grafo.update()
         self.toolbar_grafo.pack(fill="x")
+
+    def _exportar_pdf(self) -> None:
+        if self.resultado_actual is None or self.matriz_actual is None:
+            messagebox.showwarning("Sin resultado", "Resuelva el problema antes de exportar a PDF.")
+            return
+        ruta = os.path.join("output", "reporte_asignacion.pdf")
+        os.makedirs("output", exist_ok=True)
+        texto_ia = self.texto_ia.get("1.0", "end").strip()
+        if texto_ia.startswith("Consultando") or texto_ia.startswith("[Error]"):
+            texto_ia = None
+        try:
+            generador = GeneradorPDF(ruta)
+            generador.generar(self.matriz_actual, self.resultado_actual, self.figura_actual, texto_ia)
+        except Exception as error:
+            messagebox.showerror("Error al generar PDF", str(error))
+            self._set_estado(f"Error PDF: {error}", COLOR_ERROR)
+            return
+        messagebox.showinfo("PDF generado", f"Reporte guardado en:\n{ruta}")
+        self._set_estado(f"PDF exportado: {ruta}", COLOR_EXITO)
 
     def _limpiar_grafo(self) -> None:
         if self.canvas_grafo is not None:
