@@ -1,0 +1,5 @@
+requests>=2.31
+networkx>=3.2
+matplotlib>=3.8
+python-dotenv>=1.0
+# tkinter viene incluido con Python (no se instala con pip).

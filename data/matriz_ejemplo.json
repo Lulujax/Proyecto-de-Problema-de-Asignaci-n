@@ -1,0 +1,11 @@
+{
+  "agentes": ["Conductor A", "Conductor B", "Conductor C", "Conductor D"],
+  "tareas": ["Ruta Norte", "Ruta Sur", "Ruta Este"],
+  "matriz": [
+    [4, 7, 3],
+    [2, 5, 8],
+    [6, 1, 4],
+    [3, 9, 2]
+  ],
+  "objetivo_sugerido": "min"
+}
