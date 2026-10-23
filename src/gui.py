@@ -42,6 +42,7 @@ class AplicacionGUI:
 
         self.matriz_actual: Optional[Matriz] = None
         self.resultado_actual: Optional[ResultadoAsignacion] = None
+        self.texto_ia_resultado: Optional[str] = None
         self.objetivo_var = tk.StringVar(value="min")
         self.clave_api_var = tk.StringVar(value=os.getenv("GEMINI_API_KEY", ""))
         self.proveedor_var = tk.StringVar(value="Gemini")
@@ -309,6 +310,7 @@ class AplicacionGUI:
     def _establecer_matriz(self, matriz: Matriz, mensaje: str) -> None:
         self.matriz_actual = matriz
         self.resultado_actual = None
+        self.texto_ia_resultado = None
         self._mostrar_matriz(matriz)
         self.archivo_actual_var.set(f"{mensaje}  |  Dimensiones: {matriz.dimensiones()[0]} agentes x {matriz.dimensiones()[1]} tareas")
         self.etiqueta_costo.config(text="Costo/beneficio optimo: -")
@@ -418,26 +420,41 @@ class AplicacionGUI:
         if self.resultado_actual is None or self.matriz_actual is None:
             messagebox.showwarning("Sin resultado", "Resuelva el problema antes de exportar a PDF.")
             return
+        if not self.texto_ia_resultado:
+            messagebox.showwarning(
+                "Falta analisis de IA",
+                "Debe consultar la IA (pestana IA) antes de generar el reporte, "
+                "ya que el reporte requiere la conclusion textual exacta de la API.",
+            )
+            return
         ruta = os.path.join("output", "reporte_asignacion.pdf")
         os.makedirs("output", exist_ok=True)
-        texto_ia = self.texto_ia.get("1.0", "end").strip()
-        if texto_ia.startswith("Consultando") or texto_ia.startswith("[Error]"):
-            texto_ia = None
-        # Capturar la ventana de la aplicacion (pantalla de ejecucion).
         capturas = []
         try:
             from PIL import ImageGrab
-            x = self.raiz.winfo_x()
-            y = self.raiz.winfo_y()
-            w = self.raiz.winfo_width()
-            h = self.raiz.winfo_height()
-            captura = ImageGrab.grab(bbox=(x, y, x + w, y + h))
-            capturas.append(captura)
-        except Exception:
-            pass
+            tab_actual = self.notebook.index(self.notebook.select())
+            for indice in range(self.notebook.index("end")):
+                self.notebook.select(indice)
+                self.raiz.update()
+                self.raiz.update_idletasks()
+                x = self.raiz.winfo_x()
+                y = self.raiz.winfo_y()
+                w = self.raiz.winfo_width()
+                h = self.raiz.winfo_height()
+                capturas.append(ImageGrab.grab(bbox=(x, y, x + w, y + h)))
+            self.notebook.select(tab_actual)
+            self.raiz.update()
+        except Exception as error:
+            self._set_estado(f"Captura no disponible: {error}", COLOR_ALERTA)
         try:
             generador = GeneradorPDF(ruta)
-            generador.generar(self.matriz_actual, self.resultado_actual, self.figura_actual, texto_ia, capturas)
+            generador.generar(
+                self.matriz_actual,
+                self.resultado_actual,
+                self.figura_actual,
+                self.texto_ia_resultado,
+                capturas,
+            )
         except Exception as error:
             messagebox.showerror("Error al generar PDF", str(error))
             self._set_estado(f"Error PDF: {error}", COLOR_ERROR)
@@ -513,6 +530,7 @@ class AplicacionGUI:
         self.texto_ia.delete("1.0", "end")
         if ok:
             self.texto_ia.insert("end", texto)
+            self.texto_ia_resultado = texto
             self._set_estado("Analisis de IA recibido correctamente.", COLOR_EXITO)
         else:
             self.texto_ia.insert("end", f"[Error] {texto}")
